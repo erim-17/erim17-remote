@@ -1,243 +1,75 @@
-cd C:\Users\erim.aylak\Desktop\asfat-remote\public
-
-# Yeni index.html oluştur (tam çalışan)
-@'
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🚀 ASFAT Remote - CANLI</title>
     <style>
-        /* ... önceki CSS aynı kalacak ... */
+        /* CSS kodu buraya (önceki gibi) */
     </style>
 </head>
 <body>
     <div class="container">
-        <header>
-            <div class="logo">🚀</div>
-            <h1>ASFAT Remote - CANLI</h1>
-            <p class="tagline">Gerçek zamanlı ekran paylaşımı</p>
-        </header>
-        
-        <!-- Aynı HTML yapısı -->
-        
+        <!-- Arayüz buraya -->
     </div>
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
-        // ========== KONFİGÜRASYON ==========
-        const CONFIG = {
-            SERVER_URL: 'https://asfat-remote-backend.onrender.com',
-            CAPTURE_FPS: 10,
-            MAX_QUALITY: 0.7
-        };
+        const SERVER_URL = 'https://asfat-remote-backend.onrender.com';
+        let socket = null;
+        let currentRoom = null;
         
-        // ========== STATE ==========
-        let state = {
-            socket: null,
-            currentRoom: null,
-            localStream: null,
-            isSharing: false,
-            isConnected: false,
-            captureInterval: null,
-            canvas: null,
-            ctx: null,
-            video: null
-        };
-        
-        // ========== DOM ELEMENTLERİ ==========
-        const elements = {
-            statusCard: document.getElementById('statusCard'),
-            statusText: document.getElementById('statusText'),
-            roomId: document.getElementById('roomId'),
-            joinBtn: document.getElementById('joinBtn'),
-            shareBtn: document.getElementById('shareBtn'),
-            localScreen: document.getElementById('localScreen'),
-            remoteScreen: document.getElementById('remoteScreen'),
-            localPlaceholder: document.getElementById('localPlaceholder'),
-            remotePlaceholder: document.getElementById('remotePlaceholder'),
-            log: document.getElementById('log')
-        };
-        
-        // ========== LOG SİSTEMİ ==========
-        function log(message, type = 'info') {
-            const time = new Date().toLocaleTimeString();
-            const logEntry = `<div class="log-entry ${type}">[${time}] ${message}</div>`;
-            elements.log.innerHTML = logEntry + elements.log.innerHTML;
-        }
-        
-        // ========== SOCKET BAĞLANTISI ==========
-        function connectSocket() {
-            log('🔗 Backend\'e bağlanılıyor...');
+        // Socket bağlantısı
+        function connect() {
+            socket = io(SERVER_URL);
             
-            state.socket = io(CONFIG.SERVER_URL, {
-                transports: ['websocket', 'polling']
+            socket.on('connect', () => {
+                console.log('✅ Backend\'e bağlandı');
             });
             
-            state.socket.on('connect', () => {
-                log('✅ Backend\'e bağlandı', 'success');
-                elements.statusText.innerHTML = '🟢 Bağlı';
-                elements.shareBtn.disabled = false;
+            // YENİ EVENT'LER
+            socket.on('room-joined', (data) => {
+                console.log('Odaya katıldı:', data);
             });
             
-            state.socket.on('disconnect', () => {
-                log('❌ Bağlantı kesildi', 'error');
-                elements.statusText.innerHTML = '🔴 Bağlantı kesildi';
+            socket.on('receive-screen-data', (data) => {
+                // Ekran verisini göster
+                document.getElementById('remoteScreen').src = data.imageData;
             });
             
-            // EKRAN VERİSİ ALMA
-            state.socket.on('receive-screen-data', (data) => {
-                if (data.imageData) {
-                    elements.remoteScreen.src = data.imageData;
-                    elements.remotePlaceholder.style.display = 'none';
-                    log('📺 Uzak ekran güncellendi', 'success');
-                }
-            });
-            
-            // KULLANICI BAĞLANTILARI
-            state.socket.on('user-connected', (userId) => {
-                log(`👤 Yeni kullanıcı: ${userId}`);
-            });
-            
-            state.socket.on('peer-joined', (data) => {
-                log(`👥 "${data.username}" odaya katıldı`);
+            socket.on('new-message', (data) => {
+                console.log('Yeni mesaj:', data);
             });
         }
         
-        // ========== ODAYA KATIL ==========
+        // Odaya katıl
         function joinRoom() {
-            const roomId = elements.roomId.value.trim();
-            if (!roomId) {
-                alert('Oda ID girin!');
-                return;
-            }
+            const roomId = document.getElementById('roomId').value;
+            const username = document.getElementById('username').value || 'User';
             
-            if (!state.socket.connected) {
-                alert('Backend\'e bağlı değil!');
-                return;
-            }
-            
-            const username = `Kullanıcı_${Math.floor(Math.random() * 1000)}`;
-            
-            state.socket.emit('join-room', roomId, username);
-            state.currentRoom = roomId;
-            
-            log(`📦 "${roomId}" odasına katıldınız`, 'success');
-            elements.joinBtn.disabled = true;
-            elements.joinBtn.innerHTML = `✅ "${roomId}" odasında`;
+            socket.emit('join-room', roomId, username);
+            currentRoom = roomId;
         }
         
-        // ========== EKRAN PAYLAŞIMI ==========
+        // Ekran paylaş
         async function shareScreen() {
-            if (state.isSharing) {
-                stopSharing();
-                return;
-            }
-            
-            if (!state.currentRoom) {
-                alert('Önce odaya katılın!');
-                return;
-            }
-            
-            try {
-                // 1. Ekranı al
-                state.localStream = await navigator.mediaDevices.getDisplayMedia({
-                    video: {
-                        width: { ideal: 1024 },
-                        height: { ideal: 768 },
-                        frameRate: { ideal: CONFIG.CAPTURE_FPS }
-                    },
-                    audio: false
-                });
-                
-                // 2. Yerel gösterim
-                elements.localScreen.srcObject = state.localStream;
-                elements.localPlaceholder.style.display = 'none';
-                
-                // 3. Canvas oluştur (yakalama için)
-                state.canvas = document.createElement('canvas');
-                state.ctx = state.canvas.getContext('2d');
-                state.video = document.createElement('video');
-                state.video.srcObject = state.localStream;
-                state.video.play();
-                
-                // 4. Ekranı yakala ve gönder
-                state.captureInterval = setInterval(() => {
-                    captureAndSendScreen();
-                }, 1000 / CONFIG.CAPTURE_FPS);
-                
-                state.isSharing = true;
-                elements.shareBtn.innerHTML = '⏹️ Paylaşımı Durdur';
-                elements.shareBtn.classList.add('btn-danger');
-                elements.shareBtn.classList.remove('btn-success');
-                
-                log('📺 Ekran paylaşımı BAŞLADI', 'success');
-                
-            } catch (error) {
-                log(`❌ Hata: ${error.message}`, 'error');
-            }
-        }
-        
-        function captureAndSendScreen() {
-            if (!state.video || !state.ctx || !state.socket || !state.currentRoom) return;
-            
-            try {
-                // Ekranı yakala
-                state.canvas.width = state.video.videoWidth;
-                state.canvas.height = state.video.videoHeight;
-                state.ctx.drawImage(state.video, 0, 0);
-                
-                // Resmi JPEG'e çevir (sıkıştır)
-                const imageData = state.canvas.toDataURL('image/jpeg', CONFIG.MAX_QUALITY);
-                
-                // Backend'e gönder
-                state.socket.emit('send-screen-data', {
-                    roomId: state.currentRoom,
-                    imageData: imageData,
-                    timestamp: Date.now()
-                });
-                
-            } catch (error) {
-                console.error('Ekran yakalama hatası:', error);
-            }
-        }
-        
-        function stopSharing() {
-            if (state.captureInterval) {
-                clearInterval(state.captureInterval);
-                state.captureInterval = null;
-            }
-            
-            if (state.localStream) {
-                state.localStream.getTracks().forEach(track => track.stop());
-                state.localStream = null;
-            }
-            
-            elements.localScreen.srcObject = null;
-            elements.localPlaceholder.style.display = 'flex';
-            
-            state.isSharing = false;
-            elements.shareBtn.innerHTML = '📺 Ekran Paylaş';
-            elements.shareBtn.classList.remove('btn-danger');
-            elements.shareBtn.classList.add('btn-success');
-            
-            log('⏹️ Ekran paylaşımı DURDURULDU', 'warning');
-        }
-        
-        // ========== SAYFA YÜKLENDİĞİNDE ==========
-        window.onload = function() {
-            log('🚀 ASFAT Remote başlatıldı');
-            connectSocket();
-            
-            // Enter tuşu ile odaya katıl
-            elements.roomId.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') joinRoom();
+            // Ekranı al
+            const stream = await navigator.mediaDevices.getDisplayMedia({
+                video: true
             });
-        };
+            
+            // Backend'e bildir
+            socket.emit('start-screen-share', currentRoom);
+            
+            // Ekranı yakala ve gönder
+            setInterval(() => {
+                // Ekranı yakala ve base64'e çevir
+                // socket.emit('send-screen-data', {...})
+            }, 100);
+        }
+        
+        // Sayfa yüklendiğinde
+        window.onload = connect;
     </script>
 </body>
 </html>
-'@ | Out-File -FilePath index.html -Encoding UTF8 -Force
-
-Write-Host "✅ Güncellenmiş index.html oluşturuldu!" -ForegroundColor Green
