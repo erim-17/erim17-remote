@@ -1,0 +1,18 @@
+﻿{
+  "name": "asfat-remote",
+  "version": "1.0.0",
+  "description": "ASFAT Remote - Açık Kaynak Uzaktan Erişim Uygulaması",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "keywords": ["remote", "asfat", "webrtc", "screen-sharing"],
+  "author": "ASFAT Remote Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "cors": "^2.8.5"
+  }
+}
