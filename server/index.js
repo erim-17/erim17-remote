@@ -1,4 +1,4 @@
-﻿// 🚀 ASFAT Remote v2.0 - Screen Sharing Backend
+// 🚀 ASFAT Remote v2.0 - Screen Sharing Backend
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -116,6 +116,96 @@ io.on("connection", (socket) => {
       timestamp: Date.now()
     });
   });
+  
+  // Kontrol komutlarını işle
+socket.on('send-control-command', (data) => {
+    console.log(`Kontrol komutu: ${data.command}`, data.data);
+    
+    // Komutu odadaki ekran paylaşana gönder
+    socket.to(data.roomId).emit('execute-control', {
+        command: data.command,
+        data: data.data,
+        from: socket.id
+    });
+});
+
+// Kontrol komutunu çalıştır (ekran paylaşan taraf)
+socket.on('execute-control', async (data) => {
+    console.log('Kontrol çalıştırılıyor:', data.command);
+    
+    try {
+        let result = { success: false, message: '' };
+        
+        switch(data.command) {
+            case 'click':
+                // Fare tıklaması simüle et (basit versiyon)
+                result.success = true;
+                result.message = `Tıklandı: ${data.data.x}, ${data.data.y}`;
+                break;
+                
+            case 'key_press':
+                // Tuş basımı simüle et
+                result.success = true;
+                result.message = `Tuş: ${data.data.key}`;
+                break;
+                
+            case 'ctrl_alt_del':
+                // Ctrl+Alt+Delete (Windows için)
+                result.success = true;
+                result.message = 'Ctrl+Alt+Delete gönderildi';
+                break;
+        }
+        
+        // Sonucu gönderene bildir
+        socket.to(data.from).emit('control-result', result);
+        
+    } catch (error) {
+        console.error('Kontrol hatası:', error);
+        socket.to(data.from).emit('control-result', {
+            success: false,
+            message: `Hata: ${error.message}`
+        });
+    }
+});
+
+// Dosya transferi
+const receivedFiles = new Map();
+
+socket.on('send-file-start', (data) => {
+    // Yeni dosya başlangıcı
+    receivedFiles.set(socket.id, {
+        filename: data.filename,
+        chunks: [],
+        totalChunks: data.totalChunks,
+        size: data.size,
+        type: data.type
+    });
+});
+
+socket.on('send-file-chunk', (data) => {
+    // Dosya parçasını al
+    const fileInfo = receivedFiles.get(socket.id);
+    if (fileInfo) {
+        fileInfo.chunks[data.chunkIndex] = data.chunkData;
+        
+        // Tüm parçalar geldi mi?
+        if (data.isLast && fileInfo.chunks.length === fileInfo.totalChunks) {
+            // Parçaları birleştir
+            const fullData = fileInfo.chunks.join('');
+            
+            // Alıcıya gönder
+            socket.to(data.roomId).emit('file-received', {
+                filename: fileInfo.filename,
+                data: fullData,
+                size: fileInfo.size,
+                type: fileInfo.type
+            });
+            
+            // Temizle
+            receivedFiles.delete(socket.id);
+        }
+    }
+});
 
   // 5️⃣ MESAJ GÖNDER
   socket.on("send-message", ({ roomId, message }) => {
